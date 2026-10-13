@@ -7,7 +7,6 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    # Eta apnar HTML frontend ke show korbe
     return render_template('index.html')
 
 @app.route('/update-pdf', methods=['POST'])
@@ -17,24 +16,49 @@ def update_pdf():
     
     file = request.files['pdf']
     updates_json = request.form.get('updates')
-    updates = json.loads(updates_json) # Jemon: {"3,360 BDT": "4,000 BDT"}
+    updates = json.loads(updates_json)
 
     pdf_bytes = file.read()
     doc = fitz.open("pdf", pdf_bytes)
 
     for page in doc:
+        # PDF er vitor theke exact font properties read korar jonno
+        text_dict = page.get_text("dict")
+        
         for old_text, new_text in updates.items():
             if not old_text or not new_text or old_text == new_text:
                 continue
             
-            # PyMuPDF diye purano amount search kora
+            # Default properties (jodi by chance read korte na pare)
+            exact_size = 11.0
+            font_name = "helv" # Helvetica Regular
+            
+            # Original font size ebong Bold/Regular text auto-detect kora
+            for block in text_dict.get("blocks", []):
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        if old_text in span.get("text", ""):
+                            exact_size = span.get("size", 11.0)
+                            # Original lekha bold kiba seta check kora
+                            if "bold" in span.get("font", "").lower() or "black" in span.get("font", "").lower():
+                                font_name = "hebo" # Helvetica Bold
+                            break
+            
+            # Location khuje ber kora ebong text change kora
             instances = page.search_for(old_text)
             for inst in instances:
-                # Purano text muche fela (Redaction)
+                # Purano lekha permanently muche fela
                 page.add_redact_annot(inst, "")
                 page.apply_redactions()
-                # Exact same location e notun text bosano
-                page.insert_text(fitz.Point(inst.x0, inst.y1 - 1.5), new_text, fontsize=10.5, color=(0, 0, 0))
+                
+                # Detected Font, Detected Size ebong Exact Location e notun digit bosano
+                page.insert_text(
+                    fitz.Point(inst.x0, inst.y1 - (exact_size * 0.18)), 
+                    new_text, 
+                    fontsize=exact_size, 
+                    fontname=font_name, 
+                    color=(0, 0, 0)
+                )
 
     out_pdf = io.BytesIO()
     doc.save(out_pdf)
