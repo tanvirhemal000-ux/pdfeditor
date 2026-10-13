@@ -3,24 +3,12 @@ import fitz  # PyMuPDF
 import io
 import json
 import os
-import urllib.request
 import traceback
 
 app = Flask(__name__)
 
-# Render e file save korar jonno /tmp directory bebohar kora hocche
-FONT_PATH = "/tmp/Montserrat-Bold.ttf"
-FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-Bold.ttf"
-
-def ensure_font_exists():
-    if not os.path.exists(FONT_PATH):
-        try:
-            print("Downloading Montserrat-Bold font...")
-            req = urllib.request.Request(FONT_URL, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req) as response, open(FONT_PATH, 'wb') as out_file:
-                out_file.write(response.read())
-        except Exception as e:
-            print("Font download failed:", e)
+# Ebar ar kono download hobe na, sorasori github theke file nibe
+FONT_PATH = "Montserrat-Bold.ttf"
 
 @app.route('/')
 def index():
@@ -38,17 +26,17 @@ def update_pdf():
             return "No updates data found", 400
             
         updates = json.loads(updates_json)
-        ensure_font_exists()
 
         pdf_bytes = file.read()
-        # Safe format for opening pdf in memory
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
         for page in doc:
-            font_name_to_use = "hebo"
+            # Local font file ti PDF e embed kora hocche
             if os.path.exists(FONT_PATH):
                 page.insert_font(fontname="montbold", fontfile=FONT_PATH)
                 font_name_to_use = "montbold"
+            else:
+                font_name_to_use = "hebo" # Backup font jodi kono karone file na pay
                 
             for old_text, new_text in updates.items():
                 if not old_text or not new_text or old_text == new_text:
@@ -79,7 +67,6 @@ def update_pdf():
         return send_file(out_pdf, as_attachment=True, download_name="Updated_Receipt.pdf", mimetype='application/pdf')
     
     except Exception as e:
-        # Server er error ta direct frontend e pathano hocche
         error_details = traceback.format_exc()
         print(error_details)
         return f"Developer Error Code: {str(e)}", 500
