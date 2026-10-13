@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional PDF Updater</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f7f6; padding: 20px; }
+        .container { max-width: 600px; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin: auto; }
+        h2 { text-align: center; color: #333; margin-top: 0; }
+        .form-group { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        label { font-weight: bold; width: 40%; color: #555; }
+        input[type="text"], input[type="file"] { width: 55%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 15px; }
+        button:hover { background: #0056b3; }
+        .status { text-align: center; font-weight: bold; margin-top: 10px; display: none; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Professional PDF Editor</h2>
+    
+    <div style="margin-bottom: 20px;">
+        <label style="width: 100%; display: block; margin-bottom: 5px;">1. Upload Receipt PDF:</label>
+        <input type="file" id="pdfUpload" accept="application/pdf" style="width: 100%;">
+    </div>
+    
+    <div id="loadingStatus" class="status">PDF Scan Hocche...</div>
+
+    <div id="inputBoxes">
+        <div class="form-group"><label>TOTAL AMOUNT:</label><input type="text" id="totalAmt"></div>
+        <div class="form-group"><label>DISCOUNT:</label><input type="text" id="discountAmt"></div>
+        <div class="form-group"><label>NET AMOUNT:</label><input type="text" id="netAmt"></div>
+        <div class="form-group"><label>PAID:</label><input type="text" id="paidAmt"></div>
+        <div class="form-group"><label>DUE:</label><input type="text" id="dueAmt"></div>
+        <div class="form-group"><label>OVERALL DUE:</label><input type="text" id="overallDueAmt"></div>
+    </div>
+
+    <button onclick="updatePDF()">Apply Native Edit & Download</button>
+</div>
+
+<script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    
+    let originalFile = null;
+    let oldValues = {}; // Ekhane amra purano value gulo save rakhbo jate backend janete pare ki muchte hobe
+
+    document.getElementById('pdfUpload').addEventListener('change', async function(e) {
+        originalFile = e.target.files[0];
+        if (!originalFile) return;
+
+        const statusLabel = document.getElementById('loadingStatus');
+        statusLabel.style.display = 'block';
+        statusLabel.style.color = "orange";
+        statusLabel.innerText = "Data Auto-Fill hocche...";
+
+        const arrayBuffer = await originalFile.arrayBuffer();
+        
+        try {
+            const loadingTask = pdfjsLib.getDocument({data: arrayBuffer});
+            const pdf = await loadingTask.promise;
+            const page = await pdf.getPage(1);
+            const textContent = await page.getTextContent();
+            const items = textContent.items;
+
+            const targets = [
+                { key: "total", label: "TOTAL AMOUNT" },
+                { key: "discount", label: "DISCOUNT" },
+                { key: "net", label: "NET AMOUNT" },
+                { key: "paid", label: "PAID" },
+                { key: "due", label: "DUE", exact: true }, 
+                { key: "overallDue", label: "OVERALL DUE" }
+            ];
+
+            targets.forEach(target => {
+                let labelItem = items.find(i => {
+                    let text = i.str.trim().toUpperCase();
+                    if(target.exact) return text === target.label || text === target.label + ":";
+                    return text.includes(target.label);
+                });
+
+                if(labelItem) {
+                    let labelY = labelItem.transform[5];
+                    let amountItem = items.find(i => Math.abs(i.transform[5] - labelY) < 5 && i.transform[4] > labelItem.transform[4] && (i.str.includes("BDT") || /\d/.test(i.str)));
+
+                    if(amountItem) {
+                        let val = amountItem.str.replace("BDT", "").trim();
+                        document.getElementById(target.key + "Amt").value = val;
+                        oldValues[target.key] = val + " BDT"; // Backend er jonno original text save rakha
+                    }
+                }
+            });
+
+            statusLabel.innerText = "Scan Complete! Ebar amount edit kore Download korun.";
+            statusLabel.style.color = "green";
+        } catch(err) {
+            console.error(err);
+            statusLabel.innerText = "Error scanning PDF!";
+            statusLabel.style.color = "red";
+        }
+    });
+
+    async function updatePDF() {
+        if (!originalFile) { alert("Age PDF upload korun!"); return; }
+
+        // Data toiri kora backend e pathanor jonno
+        let updates = {};
+        const keys = ['total', 'discount', 'net', 'paid', 'due', 'overallDue'];
+        
+        keys.forEach(key => {
+            let newVal = document.getElementById(key + 'Amt').value;
+            if(oldValues[key]) {
+                let formattedNewVal = newVal.toUpperCase().includes("BDT") ? newVal : newVal + " BDT";
+                updates[oldValues[key]] = formattedNewVal; // Old -> New mapping
+            }
+        });
+
+        const formData = new FormData();
+        formData.append('pdf', originalFile);
+        formData.append('updates', JSON.stringify(updates));
+
+        const btn = document.querySelector('button');
+        btn.innerText = "Processing Update (Native)...";
+
+        // Python Backend e request pathano
+        try {
+            const response = await fetch('/update-pdf', { method: 'POST', body: formData });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const link = document.createElement('a');
+                link.href = window.URL.createObjectURL(blob);
+                link.download = "Updated_Receipt.pdf";
+                link.click();
+            } else {
+                alert("PDF update korte kono error hoyeche backend e.");
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            alert("Backend er sathe connect kora jacche na.");
+        } finally {
+            btn.innerText = "Apply Native Edit & Download";
+        }
+    }
+</script>
+
+</body>
+</html>
