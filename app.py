@@ -2,8 +2,20 @@ from flask import Flask, request, send_file, render_template
 import fitz  # PyMuPDF
 import io
 import json
+import os
+import urllib.request
 
 app = Flask(__name__)
+
+# Montserrat Bold font er direct link
+FONT_URL = "https://raw.githubusercontent.com/googlefonts/montserrat/main/fonts/ttf/Montserrat-Bold.ttf"
+FONT_PATH = "Montserrat-Bold.ttf"
+
+# Font file ti server e na thakle auto-download korar function
+def ensure_font_exists():
+    if not os.path.exists(FONT_PATH):
+        print("Downloading Montserrat-Bold font...")
+        urllib.request.urlretrieve(FONT_URL, FONT_PATH)
 
 @app.route('/')
 def index():
@@ -18,45 +30,33 @@ def update_pdf():
     updates_json = request.form.get('updates')
     updates = json.loads(updates_json)
 
+    # Font file ti ready kora
+    ensure_font_exists()
+
     pdf_bytes = file.read()
     doc = fitz.open("pdf", pdf_bytes)
 
     for page in doc:
-        # PDF er vitor theke exact font properties read korar jonno
-        text_dict = page.get_text("dict")
+        # PDF er vitor Montserrat Bold font ti 'montbold' name e load kora
+        page.insert_font(fontname="montbold", fontfile=FONT_PATH)
         
         for old_text, new_text in updates.items():
             if not old_text or not new_text or old_text == new_text:
                 continue
             
-            # Default properties (jodi by chance read korte na pare)
-            exact_size = 11.0
-            font_name = "helv" # Helvetica Regular
-            
-            # Original font size ebong Bold/Regular text auto-detect kora
-            for block in text_dict.get("blocks", []):
-                for line in block.get("lines", []):
-                    for span in line.get("spans", []):
-                        if old_text in span.get("text", ""):
-                            exact_size = span.get("size", 11.0)
-                            # Original lekha bold kiba seta check kora
-                            if "bold" in span.get("font", "").lower() or "black" in span.get("font", "").lower():
-                                font_name = "hebo" # Helvetica Bold
-                            break
-            
-            # Location khuje ber kora ebong text change kora
             instances = page.search_for(old_text)
             for inst in instances:
-                # Purano lekha permanently muche fela
+                # Purano text muche fela (Redaction)
                 page.add_redact_annot(inst, "")
                 page.apply_redactions()
                 
-                # Detected Font, Detected Size ebong Exact Location e notun digit bosano
+                # Ekdom Apnar Screenshot er Format onujayi Notun Text Bosano
+                # Font: Montserrat-Bold, Size: 8
                 page.insert_text(
-                    fitz.Point(inst.x0, inst.y1 - (exact_size * 0.18)), 
+                    fitz.Point(inst.x0, inst.y1 - 1.5), # Alignment thik rakhar jonno ektu upore tola hoyeche
                     new_text, 
-                    fontsize=exact_size, 
-                    fontname=font_name, 
+                    fontsize=8.0, 
+                    fontname="montbold", 
                     color=(0, 0, 0)
                 )
 
