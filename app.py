@@ -7,15 +7,20 @@ import urllib.request
 
 app = Flask(__name__)
 
-# Montserrat Bold font er direct link
-FONT_URL = "https://raw.githubusercontent.com/googlefonts/montserrat/main/fonts/ttf/Montserrat-Bold.ttf"
+# Ekdom 100% working Montserrat-Bold er ashol link
+FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-Bold.ttf"
 FONT_PATH = "Montserrat-Bold.ttf"
 
-# Font file ti server e na thakle auto-download korar function
 def ensure_font_exists():
     if not os.path.exists(FONT_PATH):
-        print("Downloading Montserrat-Bold font...")
-        urllib.request.urlretrieve(FONT_URL, FONT_PATH)
+        try:
+            print("Downloading Montserrat-Bold font...")
+            # Server theke block na korar jonno User-Agent bebohar kora holo
+            req = urllib.request.Request(FONT_URL, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response, open(FONT_PATH, 'wb') as out_file:
+                out_file.write(response.read())
+        except Exception as e:
+            print("Font download failed:", e)
 
 @app.route('/')
 def index():
@@ -30,35 +35,42 @@ def update_pdf():
     updates_json = request.form.get('updates')
     updates = json.loads(updates_json)
 
-    # Font file ti ready kora
+    # Font download korar chesta kora
     ensure_font_exists()
 
     pdf_bytes = file.read()
     doc = fitz.open("pdf", pdf_bytes)
 
     for page in doc:
-        # PDF er vitor Montserrat Bold font ti 'montbold' name e load kora
-        page.insert_font(fontname="montbold", fontfile=FONT_PATH)
-        
+        # Font properly download hole Montserrat bebohar korbe, noile Helvetica-Bold (hebo)
+        font_name_to_use = "hebo"
+        if os.path.exists(FONT_PATH):
+            page.insert_font(fontname="montbold", fontfile=FONT_PATH)
+            font_name_to_use = "montbold"
+            
         for old_text, new_text in updates.items():
             if not old_text or not new_text or old_text == new_text:
                 continue
             
+            # Jodi box faka rakha hoy (jemonta apnar chobite PAID er ghore chilo)
+            if new_text.strip() == "BDT" or new_text.strip() == "":
+                new_text = ""
+
             instances = page.search_for(old_text)
             for inst in instances:
                 # Purano text muche fela (Redaction)
                 page.add_redact_annot(inst, "")
                 page.apply_redactions()
                 
-                # Ekdom Apnar Screenshot er Format onujayi Notun Text Bosano
-                # Font: Montserrat-Bold, Size: 8
-                page.insert_text(
-                    fitz.Point(inst.x0, inst.y1 - 1.5), # Alignment thik rakhar jonno ektu upore tola hoyeche
-                    new_text, 
-                    fontsize=8.0, 
-                    fontname="montbold", 
-                    color=(0, 0, 0)
-                )
+                # Faka na thaklei shudhumatro notun text print korbe
+                if new_text:
+                    page.insert_text(
+                        fitz.Point(inst.x0, inst.y1 - 1.5), 
+                        new_text, 
+                        fontsize=8.0, 
+                        fontname=font_name_to_use, 
+                        color=(0, 0, 0)
+                    )
 
     out_pdf = io.BytesIO()
     doc.save(out_pdf)
