@@ -45,7 +45,7 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
     
     let originalFile = null;
-    let oldValues = {}; // Ekhane amra purano value gulo save rakhbo jate backend janete pare ki muchte hobe
+    let oldValues = {}; 
 
     document.getElementById('pdfUpload').addEventListener('change', async function(e) {
         originalFile = e.target.files[0];
@@ -88,7 +88,7 @@
                     if(amountItem) {
                         let val = amountItem.str.replace("BDT", "").trim();
                         document.getElementById(target.key + "Amt").value = val;
-                        oldValues[target.key] = val + " BDT"; // Backend er jonno original text save rakha
+                        oldValues[target.key] = val + " BDT"; 
                     }
                 }
             });
@@ -105,7 +105,6 @@
     async function updatePDF() {
         if (!originalFile) { alert("Age PDF upload korun!"); return; }
 
-        // Data toiri kora backend e pathanor jonno
         let updates = {};
         const keys = ['total', 'discount', 'net', 'paid', 'due', 'overallDue'];
         
@@ -113,7 +112,7 @@
             let newVal = document.getElementById(key + 'Amt').value;
             if(oldValues[key]) {
                 let formattedNewVal = newVal.toUpperCase().includes("BDT") ? newVal : newVal + " BDT";
-                updates[oldValues[key]] = formattedNewVal; // Old -> New mapping
+                updates[oldValues[key]] = formattedNewVal; 
             }
         });
 
@@ -124,7 +123,6 @@
         const btn = document.querySelector('button');
         btn.innerText = "Processing Update (Native)...";
 
-        // Python Backend e request pathano
         try {
             const response = await fetch('/update-pdf', { method: 'POST', body: formData });
             
@@ -135,7 +133,9 @@
                 link.download = "Updated_Receipt.pdf";
                 link.click();
             } else {
-                alert("PDF update korte kono error hoyeche backend e.");
+                // Ekhane change kora hoyeche jate exact error ta show kore
+                const errorText = await response.text();
+                alert("Exact Backend Error:\n" + errorText);
             }
         } catch (error) {
             console.error("Error:", error);
